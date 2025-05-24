@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 from torch.utils.data import DataLoader, TensorDataset
-from main import EventRNN  # your implementation
+from slingshot import EventRNN  # your implementation
 
 # --- hyperparameters ---
 T, SLOTS, D, OUT = 30, 3, 8, 1
