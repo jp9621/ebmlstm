@@ -12,7 +12,7 @@ def plot_slot_activation_heatmap(slot_values):
     plt.ylabel('Slot index')
     plt.title('Slot Activation Heatmap')
     plt.colorbar(label='Activation value')
-    plt.show()
+    plt.savefig('figures/slot_activation_heatmap.png')
 
 def plot_attention_line(attention_weights):
     """
@@ -26,7 +26,7 @@ def plot_attention_line(attention_weights):
     plt.ylabel('Attention weight')
     plt.title('Attention Weights Over Time')
     plt.legend()
-    plt.show()
+    plt.savefig('figures/attention_weights_over_time.png')
 
 def plot_attention_stack(attention_weights):
     """
@@ -38,7 +38,7 @@ def plot_attention_stack(attention_weights):
     plt.xlabel('Time step')
     plt.ylabel('Attention weight')
     plt.title('Stacked Attention Weights')
-    plt.show()
+    plt.savefig('figures/stacked_attention_weights.png')
 
 def plot_commit_scatter(commit_strengths, event_mask=None):
     """
@@ -55,7 +55,7 @@ def plot_commit_scatter(commit_strengths, event_mask=None):
     plt.xlabel('Time step')
     plt.ylabel('Commit strength')
     plt.title('Commit Strength Over Time')
-    plt.show()
+    plt.savefig('figures/commit_strength_over_time.png')
 
 def plot_delta_t_evolution(delta_t):
     """
@@ -69,22 +69,4 @@ def plot_delta_t_evolution(delta_t):
     plt.ylabel('Delta t')
     plt.title('Delta t Evolution Over Time')
     plt.legend()
-    plt.show()
-
-# Example usage with dummy data
-seq_len = 100
-n_slots = 5
-slot_values = np.random.rand(seq_len, n_slots)
-attention_weights = np.random.rand(seq_len, n_slots)
-attention_weights /= attention_weights.sum(axis=1, keepdims=True)  # normalize
-commit_strengths = np.random.rand(seq_len)
-event_mask = np.random.rand(seq_len) > 0.8
-delta_t = np.cumsum(np.random.rand(seq_len, n_slots), axis=0)
-
-# Generate plots
-plot_slot_activation_heatmap(slot_values)
-plot_attention_line(attention_weights)
-plot_attention_stack(attention_weights)
-plot_commit_scatter(commit_strengths, event_mask)
-plot_delta_t_evolution(delta_t)
-
+    plt.savefig('figures/dt_over_time.png')

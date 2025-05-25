@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 # assumes EventMemoryCell is defined exactly as in your snippet
-from slingshot import EventMemoryCell
+from archive.slingshot import EventMemoryCell
 
 class EventAugmentedLSTMCell(nn.Module):
     """

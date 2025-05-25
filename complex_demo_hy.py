@@ -1,0 +1,169 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import numpy as np
+from torch.utils.data import DataLoader, TensorDataset
+
+from slinglstm import EventAugmentedLSTM
+from plots import (
+    plot_slot_activation_heatmap,
+    plot_attention_line,
+    plot_attention_stack,
+    plot_commit_scatter,
+    plot_delta_t_evolution,
+)
+
+# --- hyperparameters ---
+T            = 100
+HIDDEN       = 16
+OUT          = 1
+MEM_SLOTS    = 5
+P_PRIMARY    = 0.05
+P_DISTRACTOR = 0.10
+N_SEQS       = 5000
+BS           = 64
+LR           = 1e-3
+EPOCHS       = 10
+DEVICE       = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
+def make_complex_dataset(n):
+    X = np.random.rand(n, T) * 0.5
+    is_primary = np.random.rand(n, T) < P_PRIMARY
+    is_distr  = (np.random.rand(n, T) < P_DISTRACTOR) & ~is_primary
+
+    X[is_primary] = 1.0 + np.random.rand(is_primary.sum()) * 0.5
+    X[is_distr]  = 0.8 + np.random.rand(is_distr.sum()) * 0.2
+
+    ys = []
+    for seq in X:
+        idx = np.where(seq >= 1.0)[0]
+        if len(idx) < 3:
+            ys.append(0.0)
+            continue
+        i1, i2, i3 = idx[-3], idx[-2], idx[-1]
+        a1, a2, a3 = seq[i1], seq[i2], seq[i3]
+        d_prev = i2 - i1
+        d_last = i3 - i2
+        sum_prev = seq[i1+1:i2].sum()
+        sum_last = seq[i2+1:i3].sum()
+        cond = (a1 < a2 < a3) and (d_last > d_prev) and (sum_last > 1.2 * sum_prev)
+        ys.append(1.0 if cond else 0.0)
+
+    Xt = torch.tensor(X, dtype=torch.float32).unsqueeze(-1)
+    yt = torch.tensor(ys, dtype=torch.float32).unsqueeze(-1)
+    return Xt, yt
+
+
+def visualize_memory_dynamics(model, X, device):
+    """
+    Runs one sequence through the trained model to extract and plot:
+      - slot activations
+      - attention weights
+      - commit strengths
+      - delta_t evolution
+    """
+    model.eval()
+    seq = X.permute(1, 0, 2).to(device)  # (T, 1, 1)
+    T, B, _ = seq.size()
+
+    # decompress initial cell+memory state
+    h_lstm, c_lstm, h_mem, slots, cum_feats, delta_t = model.cell.init_state(
+        batch_size=1, device=device
+    )
+
+    # buffers
+    slot_vals, deltas, alphas, gammas = [], [], [], []
+
+    for t in range(T):
+        x_t = seq[t]  # (1, 1)
+
+        # compute α and g manually
+        em = model.cell.event_cell
+        delta_t = delta_t + 1
+        q    = em.query(x_t)                             # (1, H)
+        keys = em.key(slots)                             # (1, n_slots, H)
+        sims = (keys * q.unsqueeze(1)).sum(dim=-1)       # (1, n_slots)
+        alpha = torch.softmax(sims, dim=1)               # (1, n_slots)
+        max_sim, _ = sims.max(dim=1)                     # (1,)
+        g = torch.sigmoid(max_sim.unsqueeze(1))          # (1, 1)
+
+        # update full state
+        # step 1: get (h_new, full_state)
+        h_new, full_state = model.cell(
+            x_t,
+            (h_lstm, c_lstm, h_mem, slots, cum_feats, delta_t)
+        )
+        # step 2: unpack the full_state tuple into your six variables
+        h_lstm, c_lstm, h_mem, slots, cum_feats, delta_t = full_state
+
+
+        # record
+        alphas.append(alpha.detach().cpu().numpy().squeeze())
+        gammas.append(g.detach().cpu().numpy().squeeze())
+        slot_vals.append(slots.detach().cpu().numpy().squeeze())
+        deltas.append(delta_t.detach().cpu().numpy().squeeze())
+
+    # stack and plot
+    slot_vals = np.stack(slot_vals)    # (T, n_slots, feature_dim)
+    deltas     = np.stack(deltas)      # (T, n_slots)
+    alphas     = np.stack(alphas)      # (T, n_slots)
+    gammas     = np.array(gammas)      # (T,)
+
+    plot_slot_activation_heatmap(slot_vals)
+    plot_attention_line        (alphas)
+    plot_attention_stack       (alphas)
+    plot_commit_scatter        (gammas, event_mask=None)
+    plot_delta_t_evolution     (deltas)
+
+
+def main():
+    # prepare data
+    X, y = make_complex_dataset(N_SEQS)
+    ds   = TensorDataset(X, y)
+    loader = DataLoader(ds, batch_size=BS, shuffle=True)
+
+    # initialize model
+    model = EventAugmentedLSTM(
+        input_dim=1,
+        mem_slots=MEM_SLOTS,
+        hidden_dim=HIDDEN,
+        out_dim=OUT
+    ).to(DEVICE)
+    opt  = optim.Adam(model.parameters(), lr=LR)
+    crit = nn.BCEWithLogitsLoss()
+
+    # training loop
+    for ep in range(1, EPOCHS + 1):
+        model.train()
+        total_loss = 0.0
+
+        for xb, yb in loader:
+            xb, yb = xb.to(DEVICE), yb.to(DEVICE)
+            xb = xb.permute(1, 0, 2)               # (T, B, 1)
+            logits = model(xb)[-1]                # final timestep
+            loss = crit(logits, yb)
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+            total_loss += loss.item() * xb.size(1)
+
+        print(f"[Hybrid] Epoch {ep:2d} | Loss: {total_loss/N_SEQS:.4f}")
+
+    # evaluation
+    model.eval()
+    with torch.no_grad():
+        xb, yb = X[:1000], y[:1000]
+        xb = xb.permute(1, 0, 2).to(DEVICE)
+        yb = yb.to(DEVICE)
+        pred = torch.sigmoid(model(xb)[-1]).round()
+        acc  = (pred.cpu() == yb.cpu()).float().mean().item()
+        print(f"[Hybrid] Eval Acc: {acc*100:.2f}%")
+
+    # visualize internals on one example
+    X_vis, _ = make_complex_dataset(1)
+    visualize_memory_dynamics(model, X_vis, DEVICE)
+
+
+if __name__ == "__main__":
+    main()
