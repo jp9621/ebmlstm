@@ -209,7 +209,10 @@ class EventMemoryCell(nn.Module):
         self.query = nn.Linear(input_dim, hidden_dim, bias=False)
         self.value = nn.Linear(input_dim, input_dim)
 
-        # Slot‑wise RNN for fusion → hidden_dim
+        # Gates: reabsorb oldest & per‐step leak
+        self.absorb_gate   = nn.Linear(input_dim, 1)
+
+        # Slot‐wise RNN for fusion → hidden_dim
         feat_dim = input_dim * 2 + 1
         self.slot_rnn = nn.LSTM(
             input_size=feat_dim,
@@ -250,17 +253,13 @@ class EventMemoryCell(nn.Module):
         max_sim, _ = sims.max(dim=1, keepdim=True)          # (B,1)
         g = torch.sigmoid(max_sim)                          # (B,1)
 
-        # 4) Simplified commit-only: project value and gate by g
-        v        = self.value(x_t)                          # (B, input_dim)
-        new_slot = g * v                                    # (B, input_dim)
+        # 4) Form new slot via value projection
+        v      = self.value(x_t)                          # (B, input_dim)
+        oldest = slots[:, 0, :]                           # (B, input_dim)
+        new_slot = v  # (B, input_dim)
 
-        # 5) FIFO replace _only_ when commit exceeds threshold
-        tau   = 0.1
-        mask  = (g > tau).float().view(B,1,1)               # (B,1,1)
-        # candidate FIFO-shifted slots + new slot
-        cand  = torch.cat([slots[:, 1:, :], new_slot.unsqueeze(1)], dim=1)
-        # apply conditional replace
-        slots = mask * cand + (1 - mask) * slots
+        # 5) FIFO replace
+        slots = torch.cat([slots[:, 1:, :], new_slot.unsqueeze(1)], dim=1)
 
         # 6) Cum‑features: reset newest, then add x_t
         cum_feats = torch.cat([
