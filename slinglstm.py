@@ -21,7 +21,6 @@ class EventMemoryCell(nn.Module):
         self.value = nn.Linear(input_dim, input_dim)
 
         # Gates: reabsorb oldest & per‐step leak
-        self.reabsorb_gate = nn.Linear(input_dim, 1)
         self.absorb_gate   = nn.Linear(input_dim, 1)
 
         # Slot‐wise RNN for fusion → hidden_dim
@@ -65,12 +64,10 @@ class EventMemoryCell(nn.Module):
         max_sim, _ = sims.max(dim=1, keepdim=True)   # (B,1)
         g = torch.sigmoid(max_sim)                   # (B,1)
 
-        # 4) Form new slot via reabsorb + value projection
-        r      = torch.sigmoid(self.reabsorb_gate(x_t))   # (B,1)
+        # 4) Form new slot via value projection
         v      = self.value(x_t)                          # (B, input_dim)
         oldest = slots[:, 0, :]                           # (B, input_dim)
-        new_slot = r * oldest + (1 - r) * v               # (B, input_dim)
-        new_slot = g * new_slot                           # gated commit
+        new_slot = v  # (B, input_dim)
 
         # 5) FIFO replace
         slots = torch.cat([slots[:, 1:, :], new_slot.unsqueeze(1)], dim=1)

@@ -20,37 +20,48 @@ OUT          = 1
 MEM_SLOTS    = 5
 P_PRIMARY    = 0.05
 P_DISTRACTOR = 0.10
-N_SEQS       = 5000
+N_SEQS       = 1000
 BS           = 64
 LR           = 1e-3
 EPOCHS       = 10
 DEVICE       = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-def make_complex_dataset(n):
-    X = np.random.rand(n, T) * 0.5
-    is_primary = np.random.rand(n, T) < P_PRIMARY
-    is_distr  = (np.random.rand(n, T) < P_DISTRACTOR) & ~is_primary
-
-    X[is_primary] = 1.0 + np.random.rand(is_primary.sum()) * 0.5
-    X[is_distr]  = 0.8 + np.random.rand(is_distr.sum()) * 0.2
-
+def make_complex_dataset(n,
+                           baseline_mu=1.0, baseline_sigma=0.2,
+                           event_rate=0.02,
+                           spike_scale=10.0,
+                           label_margin=1.2):
+    """
+    n        : # sequences
+    T        : seq length
+    event_rate : prob of a 'big' event on any step (~Poisson)
+    spike_scale: scale parameter for exponential spikes
+    """
+    # 1) baseline noise around ~1.0
+    X = np.random.normal(baseline_mu, baseline_sigma, size=(n, T))
+    # 2) draw event mask
+    is_event = np.random.rand(n, T) < event_rate
+    # 3) heavy-tailed spikes
+    spikes = np.random.exponential(scale=spike_scale, size=(n, T))
+    X[is_event] = spikes[is_event]
+    # 4) labels: look at last 3 events and compare gaps & sums
     ys = []
     for seq in X:
-        idx = np.where(seq >= 1.0)[0]
+        idx = np.where(seq > baseline_mu + 3*baseline_sigma)[0]  # event threshold
         if len(idx) < 3:
             ys.append(0.0)
             continue
         i1, i2, i3 = idx[-3], idx[-2], idx[-1]
         a1, a2, a3 = seq[i1], seq[i2], seq[i3]
-        d_prev = i2 - i1
-        d_last = i3 - i2
-        sum_prev = seq[i1+1:i2].sum()
-        sum_last = seq[i2+1:i3].sum()
-        cond = (a1 < a2 < a3) and (d_last > d_prev) and (sum_last > 1.2 * sum_prev)
+        d1, d2 = i2 - i1, i3 - i2
+        s1 = seq[i1+1:i2].sum()
+        s2 = seq[i2+1:i3].sum()
+        cond = (a1 < a2 < a3) and (d2 > d1) and (s2 > label_margin * s1)
         ys.append(1.0 if cond else 0.0)
 
-    Xt = torch.tensor(X, dtype=torch.float32).unsqueeze(-1)
+    # to torch
+    Xt = torch.tensor(X, dtype=torch.float32).unsqueeze(-1)  # (n,T,1)
     yt = torch.tensor(ys, dtype=torch.float32).unsqueeze(-1)
     return Xt, yt
 
