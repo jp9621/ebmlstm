@@ -17,7 +17,7 @@ from plots import (
 T            = 100
 HIDDEN       = 16
 OUT          = 1
-MEM_SLOTS    = 5
+MEM_SLOTS    = 3
 P_PRIMARY    = 0.05
 P_DISTRACTOR = 0.10
 N_SEQS       = 1000
@@ -29,7 +29,7 @@ DEVICE       = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def make_complex_dataset(n,
                          baseline_mu=1.0, baseline_sigma=0.2,
-                         event_rate=0.02,
+                         event_rate=0.1,
                          spike_scale=10.0,
                          label_margin=1.2):
     """
