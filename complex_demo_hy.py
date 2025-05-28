@@ -28,10 +28,10 @@ DEVICE       = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def make_complex_dataset(n,
-                           baseline_mu=1.0, baseline_sigma=0.2,
-                           event_rate=0.02,
-                           spike_scale=10.0,
-                           label_margin=1.2):
+                         baseline_mu=1.0, baseline_sigma=0.2,
+                         event_rate=0.02,
+                         spike_scale=10.0,
+                         label_margin=1.2):
     """
     n        : # sequences
     T        : seq length
@@ -48,19 +48,18 @@ def make_complex_dataset(n,
     # 4) labels: look at last 3 events and compare gaps & sums
     ys = []
     for seq in X:
-        idx = np.where(seq > baseline_mu + 3*baseline_sigma)[0]  # event threshold
+        idx = np.where(seq > baseline_mu + 3 * baseline_sigma)[0]
         if len(idx) < 3:
             ys.append(0.0)
             continue
         i1, i2, i3 = idx[-3], idx[-2], idx[-1]
         a1, a2, a3 = seq[i1], seq[i2], seq[i3]
         d1, d2 = i2 - i1, i3 - i2
-        s1 = seq[i1+1:i2].sum()
-        s2 = seq[i2+1:i3].sum()
+        s1 = seq[i1 + 1:i2].sum()
+        s2 = seq[i2 + 1:i3].sum()
         cond = (a1 < a2 < a3) and (d2 > d1) and (s2 > label_margin * s1)
         ys.append(1.0 if cond else 0.0)
 
-    # to torch
     Xt = torch.tensor(X, dtype=torch.float32).unsqueeze(-1)  # (n,T,1)
     yt = torch.tensor(ys, dtype=torch.float32).unsqueeze(-1)
     return Xt, yt
@@ -78,44 +77,40 @@ def visualize_memory_dynamics(model, X, device):
     seq = X.permute(1, 0, 2).to(device)  # (T, 1, 1)
     T, B, _ = seq.size()
 
-    # decompress initial cell+memory state
-    h_lstm, c_lstm, h_mem, slots, cum_feats, delta_t = model.cell.init_state(
-        batch_size=1, device=device
-    )
+    # --- DECOMPRESS INITIAL STATE (now 7 values: +filled) ---
+    h_lstm, c_lstm, h_mem, slots, cum_feats, delta_t, filled = \
+        model.cell.init_state(batch_size=1, device=device)
 
-    # buffers
+    # buffers for plotting
     slot_vals, deltas, alphas, gammas = [], [], [], []
 
     for t in range(T):
         x_t = seq[t]  # (1, 1)
 
-        # compute α and g manually
+        # recompute α and g for plotting
         em = model.cell.event_cell
         delta_t = delta_t + 1
-        q    = em.query(x_t)                             # (1, H)
-        keys = em.key(slots)                             # (1, n_slots, H)
-        sims = (keys * q.unsqueeze(1)).sum(dim=-1)       # (1, n_slots)
-        alpha = torch.softmax(sims, dim=1)               # (1, n_slots)
-        max_sim, _ = sims.max(dim=1)                     # (1,)
-        g = torch.sigmoid(max_sim.unsqueeze(1))          # (1, 1)
+        q    = em.query(x_t)
+        keys = em.key(slots)
+        sims = (keys * q.unsqueeze(1)).sum(dim=-1)
+        alpha = torch.softmax(sims, dim=1)
+        max_sim, _ = sims.max(dim=1)
+        g = torch.sigmoid(max_sim.unsqueeze(1))
 
-        # update full state
-        # step 1: get (h_new, full_state)
+        # --- STEP THROUGH THE CELL (now pass & return 'filled') ---
         h_new, full_state = model.cell(
             x_t,
-            (h_lstm, c_lstm, h_mem, slots, cum_feats, delta_t)
+            (h_lstm, c_lstm, h_mem, slots, cum_feats, delta_t, filled)
         )
-        # step 2: unpack the full_state tuple into your six variables
-        h_lstm, c_lstm, h_mem, slots, cum_feats, delta_t = full_state
+        h_lstm, c_lstm, h_mem, slots, cum_feats, delta_t, filled = full_state
 
-
-        # record
+        # record for plots
         alphas.append(alpha.detach().cpu().numpy().squeeze())
         gammas.append(g.detach().cpu().numpy().squeeze())
         slot_vals.append(slots.detach().cpu().numpy().squeeze())
         deltas.append(delta_t.detach().cpu().numpy().squeeze())
 
-    # stack and plot
+    # stack and visualize
     slot_vals = np.stack(slot_vals)    # (T, n_slots, feature_dim)
     deltas     = np.stack(deltas)      # (T, n_slots)
     alphas     = np.stack(alphas)      # (T, n_slots)
@@ -159,7 +154,7 @@ def main():
             opt.step()
             total_loss += loss.item() * xb.size(1)
 
-        print(f"[Hybrid] Epoch {ep:2d} | Loss: {total_loss/N_SEQS:.4f}")
+        print(f"[Hybrid] Epoch {ep:2d} | Loss: {total_loss / N_SEQS:.4f}")
 
     # evaluation
     model.eval()
@@ -169,9 +164,9 @@ def main():
         yb = yb.to(DEVICE)
         pred = torch.sigmoid(model(xb)[-1]).round()
         acc  = (pred.cpu() == yb.cpu()).float().mean().item()
-        print(f"[Hybrid] Eval Acc: {acc*100:.2f}%")
+        print(f"[Hybrid] Eval Acc: {acc * 100:.2f}%")
 
-    # visualize internals on one example
+    # visualize internals
     X_vis, _ = make_complex_dataset(1)
     visualize_memory_dynamics(model, X_vis, DEVICE)
 
