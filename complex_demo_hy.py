@@ -11,6 +11,7 @@ from plots import (
     plot_attention_stack,
     plot_commit_scatter,
     plot_delta_t_evolution,
+    plot_slot_delta_heatmap
 )
 
 # --- hyperparameters ---
@@ -29,7 +30,7 @@ DEVICE       = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def make_complex_dataset(n,
                          baseline_mu=1.0, baseline_sigma=0.2,
-                         event_rate=0.1,
+                         event_rate=0.2,
                          spike_scale=10.0,
                          label_margin=1.2):
     """
@@ -40,11 +41,16 @@ def make_complex_dataset(n,
     """
     # 1) baseline noise around ~1.0
     X = np.random.normal(baseline_mu, baseline_sigma, size=(n, T))
-    # 2) draw event mask
+        # 2) draw event mask
     is_event = np.random.rand(n, T) < event_rate
+
+    # # ──> force the first 3 bars of every sequence to be events
+    # is_event[:, :3] = True
+
     # 3) heavy-tailed spikes
-    spikes = np.random.exponential(scale=spike_scale, size=(n, T))
+    spikes   = np.random.exponential(scale=spike_scale, size=(n, T))
     X[is_event] = spikes[is_event]
+
     # 4) labels: look at last 3 events and compare gaps & sums
     ys = []
     for seq in X:
@@ -115,12 +121,14 @@ def visualize_memory_dynamics(model, X, device):
     deltas     = np.stack(deltas)      # (T, n_slots)
     alphas     = np.stack(alphas)      # (T, n_slots)
     gammas     = np.array(gammas)      # (T,)
+    delta_vals = slot_vals[1:] - slot_vals[:-1]   # shape (T-1, n_slots)
 
     plot_slot_activation_heatmap(slot_vals)
     plot_attention_line        (alphas)
     plot_attention_stack       (alphas)
     plot_commit_scatter        (gammas, event_mask=None)
     plot_delta_t_evolution     (deltas)
+    plot_slot_delta_heatmap(delta_vals)
 
 
 def main():

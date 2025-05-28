@@ -70,3 +70,16 @@ def plot_delta_t_evolution(delta_t):
     plt.title('Delta t Evolution Over Time')
     plt.legend()
     plt.savefig('figures/dt_over_time.png')
+
+def plot_slot_delta_heatmap(delta_values):
+    """
+    delta_values: numpy array of shape (seq_len-1, n_slots)
+    """
+    activation = delta_values.T    # (n_slots, seq_len-1)
+    plt.figure()
+    plt.imshow(activation, aspect='auto', origin='lower')
+    plt.xlabel('Time step')
+    plt.ylabel('Slot index')
+    plt.title('Slot‐Value Change Heatmap')
+    plt.colorbar(label='Δ Activation')
+    plt.savefig('figures/slot_delta_heatmap.png')
