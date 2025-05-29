@@ -46,7 +46,7 @@ class SequenceMemoryCell(nn.Module):
 
         # 1) detect event (boolean mask)
         e_t         = torch.sigmoid(self.event_detector(x_t))  # (B,1)
-        event_mask  = e_t > self.tau                            # (B,1) boolean
+        event_mask  = e_t > 0.85 # self.tau                            # (B,1) boolean
         mask3       = event_mask.view(B, 1, 1)                  # (B,1,1) boolean
 
         # 2) prepare new content
