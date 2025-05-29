@@ -67,13 +67,22 @@ class EventMemoryCell(nn.Module):
         # 4) New slot candidate
         v = self.value(x_t)                                  # (B, input_dim)
 
+        # # 5) Choose which slot to write:
+        # #    first empty, else the most-similar
+        # empty_any   = (~filled).any(dim=1)                   # (B,)
+        # empty_mask  = (~filled).float()                      # (B, n_slots)
+        # idx_empty   = empty_mask.argmax(dim=1)               # (B,) first empty or 0
+        # _, idx_cont = sims.max(dim=1)                        # (B,)
+        # idx         = torch.where(empty_any, idx_empty, idx_cont)
+
         # 5) Choose which slot to write:
-        #    first empty, else the most-similar
-        empty_any   = (~filled).any(dim=1)                   # (B,)
-        empty_mask  = (~filled).float()                      # (B, n_slots)
-        idx_empty   = empty_mask.argmax(dim=1)               # (B,) first empty or 0
-        _, idx_cont = sims.max(dim=1)                        # (B,)
-        idx         = torch.where(empty_any, idx_empty, idx_cont)
+        #    first empty, else the oldest (largest delta_t)
+        empty_any    = (~filled).any(dim=1)                  # (B,)
+        empty_mask   = (~filled).float()                     # (B, n_slots)
+        idx_empty    = empty_mask.argmax(dim=1)              # (B,) first empty or 0
+        idx_oldest   = delta_t.argmax(dim=1)                 # (B,) slot with max time since last write
+        idx          = torch.where(empty_any, idx_empty, idx_oldest)
+
 
         # prepare for scatter updates
         arange = torch.arange(B, device=slots.device)

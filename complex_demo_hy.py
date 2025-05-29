@@ -44,8 +44,8 @@ def make_complex_dataset(n,
         # 2) draw event mask
     is_event = np.random.rand(n, T) < event_rate
 
-    # # ──> force the first 3 bars of every sequence to be events
-    # is_event[:, :3] = True
+    # ──> force the first 3 bars of every sequence to be events
+    is_event[:, :3] = True
 
     # 3) heavy-tailed spikes
     spikes   = np.random.exponential(scale=spike_scale, size=(n, T))
@@ -176,6 +176,7 @@ def main():
 
     # visualize internals
     X_vis, _ = make_complex_dataset(1)
+    print(X_vis)
     visualize_memory_dynamics(model, X_vis, DEVICE)
 
 
