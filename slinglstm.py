@@ -14,13 +14,9 @@ class SequenceMemoryCell(nn.Module):
         self.n_slots    = n_slots
         self.tau        = tau
 
-        # map x_t → slot content
         self.value = nn.Linear(input_dim, input_dim)
-        # detect whether x_t is an “event”
         self.event_detector = nn.Linear(input_dim, 1)
-        # positional embeddings for each slot index
         self.pos_emb = nn.Parameter(torch.randn(n_slots, input_dim))
-        # fuse the sequence of slots → h_mem
         self.slot_fuser = nn.LSTM(
             input_size=input_dim,
             hidden_size=hidden_dim,
@@ -44,31 +40,25 @@ class SequenceMemoryCell(nn.Module):
         slots, ptr = state
         B = x_t.size(0)
 
-        # 1) detect event (boolean mask)
-        e_t         = torch.sigmoid(self.event_detector(x_t))  # (B,1)
-        event_mask  = e_t > 0.85 # self.tau                            # (B,1) boolean
-        mask3       = event_mask.view(B, 1, 1)                  # (B,1,1) boolean
+        e_t         = torch.sigmoid(self.event_detector(x_t))
+        event_mask  = e_t > 0.85
+        mask3       = event_mask.view(B, 1, 1)
 
-        # 2) prepare new content
-        v       = self.value(x_t)                               # (B, input_dim)
-        ptr_idx = ptr.view(B,1,1).expand(-1,1,self.input_dim)   # (B,1,input_dim)
+        v       = self.value(x_t)
+        ptr_idx = ptr.view(B,1,1).expand(-1,1,self.input_dim)
 
-        # 3) circular write only when event_mask=True
         new_slots = torch.where(
             mask3,
             slots.scatter(1, ptr_idx, v.unsqueeze(1)),
             slots
         )
 
-        # 4) advance pointer mod n_slots (using event_mask.long())
         new_ptr = (ptr + event_mask.view(-1).long()) % self.n_slots
 
-        # 5) add positional embeddings
-        slots_pe = new_slots + self.pos_emb.unsqueeze(0)        # (B, n_slots, input_dim)
+        slots_pe = new_slots + self.pos_emb.unsqueeze(0)
 
-        # 6) fuse with slot-wise LSTM
-        rnn_out, _ = self.slot_fuser(slots_pe)                  # (B, n_slots, hidden_dim)
-        h_mem      = rnn_out[:, -1, :]                          # (B, hidden_dim)
+        rnn_out, _ = self.slot_fuser(slots_pe)
+        h_mem      = rnn_out[:, -1, :]
 
         return h_mem, (new_slots, new_ptr)
 
@@ -102,10 +92,8 @@ class EventAugmentedLSTMCell(nn.Module):
         """
         h_lstm, c_lstm, _, slots, ptr = state
 
-        # 1) update circular memory → h_mem
         h_mem, (slots, ptr) = self.mem_cell(x_t, (slots, ptr))
 
-        # 2) LSTM-from-scratch on [x_t; h_mem]
         gates = self.W_ih(torch.cat([x_t, h_mem], dim=1)) + self.W_hh(h_lstm)
         i, f, g_tilde, o = gates.chunk(4, dim=1)
         i = torch.sigmoid(i)
@@ -129,7 +117,6 @@ class EventAugmentedLSTM(nn.Module):
         self.classifier = nn.Linear(hidden_dim, out_dim)
 
     def forward(self, x):
-        # x: (T, B, input_dim)
         T, B, _ = x.size()
         state = self.cell.init_state(B, device=x.device)
         outputs = []

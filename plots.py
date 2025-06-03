@@ -2,7 +2,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-# Ensure the figures directory exists
 os.makedirs('figures', exist_ok=True)
 
 
@@ -35,7 +34,6 @@ def plot_event_write_overlay(e_history, threshold):
     ax.plot(e_history, label='Commit strength')
     ax.axhline(threshold, color='red', linestyle='--', label=f'Threshold={threshold}')
 
-    # Shade regions where commit strength exceeds threshold
     e_arr = np.array(e_history)
     above = e_arr > threshold
     ax.fill_between(
@@ -63,7 +61,6 @@ def plot_slot_recency_heatmap(slot_ages):
     Args:
         slot_ages (np.ndarray): 2D array shaped (timesteps, n_slots).
     """
-    # transpose so rows=slots, cols=time
     ages = np.array(slot_ages)
     plt.figure()
     plt.imshow(ages.T, aspect='auto', origin='lower', cmap='viridis')
@@ -104,14 +101,10 @@ def visualize_memory_dynamics(ptr_history, e_history, threshold, slot_ages, h_me
         slot_ages (List[List[int]] or np.ndarray): Ages per slot per timestep.
         h_mem_history (List[List[float]] or np.ndarray): Fused memory content per timestep.
     """
-    # 1. Pointer trajectory
     plot_pointer_trajectory(ptr_history)
 
-    # 2. Commit strength with event overlay
     plot_event_write_overlay(e_history, threshold)
 
-    # 3. Slot recency heatmap
     plot_slot_recency_heatmap(slot_ages)
 
-    # 4. Fused memory evolution
     plot_h_mem_heatmap(h_mem_history)
