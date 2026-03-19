@@ -1,4 +1,4 @@
-# Event-Augmented LSTM with Sequence Memory (SLING-LSTM)
+# Event-Augmented LSTM with Sequence Memory (EBM-LSTM)
 
 Event-Augmented LSTM architecture that combines traditional LSTM processing with an event-based sequence memory mechanism. The model is particularly useful for tasks requiring selective memory of important events in sequential data.
 
@@ -8,9 +8,9 @@ The implementation consists of three main components:
 
 ### 1. SequenceMemoryCell
 - Maintains a circular buffer of the last `n_slots` events
-- Writes to memory only when event detection threshold is exceeded
-- Incorporates positional embeddings before fusing slots with an LSTM
-- Uses an event detector to determine significant events (threshold τ = 0.85)
+- Writes to memory only when event detection threshold is exceeded (hardcoded at 0.85)
+- Adds positional embeddings to slots, then aggregates via a learned weighted sum (parallelizable)
+- Projects the aggregated slot representation to `hidden_dim` via `slot_proj`
 
 ### 2. EventAugmentedLSTMCell
 - Combines SequenceMemoryCell with a standard LSTM
@@ -27,7 +27,7 @@ The implementation consists of three main components:
 
 ```python
 import torch
-from slinglstm import EventAugmentedLSTM
+from ebmlstm import EventAugmentedLSTM
 
 # Initialize model
 model = EventAugmentedLSTM(
@@ -49,11 +49,12 @@ outputs = model(x)  # outputs shape: (sequence_length, batch_size, out_dim)
 2. **Positional Encoding**: Incorporates positional information in the memory slots.
 3. **Circular Buffer**: Efficient memory management using a circular buffer mechanism.
 4. **Hybrid Architecture**: Combines benefits of LSTM with event-based memory.
+5. **Parallel Slot Aggregation**: Slots are fused via a learned softmax-weighted sum, with no sequential dependency across slots.
 
 ## Model Parameters
 
 - `input_dim`: Dimension of input features
 - `hidden_dim`: Dimension of hidden states
-- `n_slots`: Number of memory slots in the sequence memory
-- `tau`: Threshold for event detection (default: 0.5)
+- `n_slots` / `mem_slots`: Number of memory slots in the sequence memory
+- `tau`: Passed to `SequenceMemoryCell` (default: 0.5); event write threshold is hardcoded at 0.85
 - `out_dim`: Dimension of output predictions
