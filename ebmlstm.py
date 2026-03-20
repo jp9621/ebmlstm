@@ -29,10 +29,10 @@ class EventAugmentedLSTMCell(nn.Module):
         if device is None:
             device = next(self.parameters()).device
         return (
-            torch.zeros(batch_size, self.hidden_dim, device=device),  # h_lstm
-            torch.zeros(batch_size, self.hidden_dim, device=device),  # c_lstm
-            torch.zeros(batch_size, self.n_slots, self.input_dim, device=device),  # slots
-            torch.zeros(batch_size, dtype=torch.long, device=device),  # ptr
+            torch.zeros(batch_size, self.hidden_dim, device=device),
+            torch.zeros(batch_size, self.hidden_dim, device=device),
+            torch.zeros(batch_size, self.n_slots, self.input_dim, device=device),
+            torch.zeros(batch_size, dtype=torch.long, device=device),
         )
 
     def forward(self, x_t, state):

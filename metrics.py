@@ -1,25 +1,3 @@
-"""
-Metrics collection for the EBM-LSTM paper.
-Compares EBM-LSTM against Vanilla LSTM variants across:
-
-  1. Core comparison  — accuracy, precision, recall, F1, latency, params
-  2. Latency scaling  — how latency grows with sequence length
-
-Task
-----
-Binary classification. A marker event (moderate-amplitude spike in a fixed
-direction) is injected at a UNIFORMLY RANDOM position anywhere in [0, T).
-Neither model has a positional structural advantage: the full LSTM must
-propagate the signal through sequential state; the EBM-LSTM must detect it
-via attention when it falls in the buffer or via LSTM when it falls in the
-recent window.
-
-Amplitude is kept moderate (SNR ≈ 4) so models must actually learn rather
-than trivially threshold a single feature.
-
-All results are written to saved/metrics.json.
-"""
-
 import os
 import json
 import time
@@ -30,10 +8,9 @@ from torch.utils.data import DataLoader, TensorDataset
 SAVE_DIR = "saved"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
-# ── Config ───────────────────────────────────────────────────────────────────
 SEQ_LEN     = 100
 LSTM_WIN    = 20
-BUFFER_LEN  = SEQ_LEN - LSTM_WIN   # 80
+BUFFER_LEN  = SEQ_LEN - LSTM_WIN
 INPUT_DIM   = 16
 HIDDEN      = 64
 N_SLOTS     = 10
@@ -48,7 +25,6 @@ N_LAT_ITERS = 500
 DEVICE      = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-# ── Models ───────────────────────────────────────────────────────────────────
 class VanillaLSTM(nn.Module):
     def __init__(self, input_dim, hidden_dim, window, out_dim=2):
         super().__init__()
@@ -56,16 +32,12 @@ class VanillaLSTM(nn.Module):
         self.lstm   = nn.LSTM(input_dim, hidden_dim, batch_first=True)
         self.head   = nn.Linear(hidden_dim, out_dim)
 
-    def forward(self, x):              # x: (B, T, D)
+    def forward(self, x):
         _, (h, _) = self.lstm(x[:, -self.window:, :])
         return self.head(h.squeeze(0))
 
 
 class EBM_LSTM(nn.Module):
-    """
-    Phase 1 — vectorised attention over distant buffer steps (no loop).
-    Phase 2 — fused LSTM over recent window, initialised with buffer summary.
-    """
     def __init__(self, input_dim, hidden_dim, n_slots, buffer_len, out_dim=2, tau=0.5):
         super().__init__()
         self.buffer_len     = buffer_len
@@ -75,31 +47,25 @@ class EBM_LSTM(nn.Module):
         self.lstm           = nn.LSTM(input_dim, hidden_dim, batch_first=True)
         self.head           = nn.Linear(hidden_dim, out_dim)
 
-    def forward(self, x):              # x: (B, T, D)
+    def forward(self, x):
         buf     = x[:, :self.buffer_len, :]
-        weights = torch.softmax(self.event_detector(buf), dim=1)   # (B, buf, 1)
-        summary = (weights * self.value_proj(buf)).sum(dim=1)      # (B, D)
-        h0      = self.summary_proj(summary).unsqueeze(0)          # (1, B, H)
+        weights = torch.softmax(self.event_detector(buf), dim=1)
+        summary = (weights * self.value_proj(buf)).sum(dim=1)
+        h0      = self.summary_proj(summary).unsqueeze(0)
         c0      = torch.zeros_like(h0)
         _, (h, _) = self.lstm(x[:, self.buffer_len:, :], (h0, c0))
         return self.head(h.squeeze(0))
 
 
-# ── Dataset ──────────────────────────────────────────────────────────────────
 def make_dataset(n, seq_len, buffer_len, input_dim, marker_prob=0.5, seed=None):
-    """
-    Marker position is uniformly random in [0, seq_len) — NOT constrained to
-    the buffer. Amplitude is moderate (2.0) against background noise (std 0.5),
-    giving SNR ≈ 4 so both models must actually learn to detect the event.
-    """
     if seed is not None:
         torch.manual_seed(seed)
     X    = torch.randn(n, seq_len, input_dim) * 0.5
     y    = torch.zeros(n, dtype=torch.long)
     mask = torch.rand(n) < marker_prob
-    pos  = torch.randint(0, seq_len, (n,))     # anywhere in the full sequence
+    pos  = torch.randint(0, seq_len, (n,))
     spike = torch.zeros(input_dim)
-    spike[0] = 2.0                              # fixed direction, moderate amplitude
+    spike[0] = 2.0
     for i in range(n):
         if mask[i]:
             X[i, pos[i]] += spike
@@ -107,7 +73,6 @@ def make_dataset(n, seq_len, buffer_len, input_dim, marker_prob=0.5, seed=None):
     return X, y
 
 
-# ── Utilities ────────────────────────────────────────────────────────────────
 def count_params(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
@@ -127,7 +92,7 @@ def measure_latency(model, x, n_warmup=50, n_iters=N_LAT_ITERS, device=DEVICE):
                 e1 = torch.cuda.Event(enable_timing=True)
                 e0.record(); model(x); e1.record()
                 torch.cuda.synchronize()
-                lats.append(e0.elapsed_time(e1) * 1000)  # ms → µs
+                lats.append(e0.elapsed_time(e1) * 1000)
         else:
             for _ in range(n_iters):
                 t0 = time.perf_counter(); model(x); t1 = time.perf_counter()
@@ -153,7 +118,6 @@ def latency_stats(lats, store_all=False):
 
 
 def train_and_eval(model, train_loader, test_loader, epochs, lr, device):
-    """Returns (final_accuracy, curves_dict)."""
     model.to(device)
     opt     = torch.optim.Adam(model.parameters(), lr=lr)
     loss_fn = nn.CrossEntropyLoss()
@@ -222,9 +186,6 @@ def to_json_safe(obj):
     return float(obj)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# 1. CORE COMPARISON
-# ══════════════════════════════════════════════════════════════════════════════
 def run_core_comparison():
     print("\n" + "="*60)
     print("1. CORE COMPARISON (accuracy, latency, params)")
@@ -265,9 +226,6 @@ def run_core_comparison():
     return core, curves
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# 2. LATENCY SCALING vs SEQUENCE LENGTH
-# ══════════════════════════════════════════════════════════════════════════════
 def run_latency_scaling_seq():
     print("\n" + "="*60)
     print("2. LATENCY SCALING vs SEQUENCE LENGTH")
@@ -302,9 +260,6 @@ def run_latency_scaling_seq():
     return results
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# MAIN
-# ══════════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     print(f"Device : {DEVICE}")
     print(f"Seq    : {SEQ_LEN}  |  Buffer: {BUFFER_LEN}  |  LSTM win: {LSTM_WIN}")

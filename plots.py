@@ -1,18 +1,3 @@
-"""
-Paper plots for the EBM-LSTM paper.
-Reads saved/metrics.json and writes figures to saved/.
-
-Figures
--------
-  fig1_core_comparison.png      — accuracy / latency / param count bar charts
-  fig2_tradeoff_scatter.png     — accuracy vs latency tradeoff
-  fig3_training_curves.png      — per-epoch loss & accuracy
-  fig4_latency_vs_seqlen.png    — latency scaling with sequence length (log-log)
-  fig5_speedup_vs_seqlen.png    — EBM-LSTM speedup vs sequence length
-  fig6_latency_distribution.png — per-iteration latency box plots + percentiles
-  fig7_confusion_matrices.png   — confusion matrices for all three models
-"""
-
 import os
 import json
 import numpy as np
@@ -70,9 +55,6 @@ def bar_labels(ax, bars, fmt="{:.3f}", offset_frac=0.01, max_val=None):
                 fmt.format(h), ha="center", va="bottom", fontsize=8)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# FIG 1 — Core comparison (accuracy / latency / params)
-# ══════════════════════════════════════════════════════════════════════════════
 def fig_core_comparison(m):
     core = m["core_comparison"]
     cfg  = m["config"]
@@ -126,9 +108,6 @@ def fig_core_comparison(m):
     savefig(fig, "fig1_core_comparison")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# FIG 2 — Accuracy–Latency tradeoff scatter
-# ══════════════════════════════════════════════════════════════════════════════
 def fig_tradeoff_scatter(m):
     core   = m["core_comparison"]
     names  = MODEL_ORDER
@@ -164,9 +143,6 @@ def fig_tradeoff_scatter(m):
     savefig(fig, "fig2_tradeoff_scatter")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# FIG 3 — Training curves
-# ══════════════════════════════════════════════════════════════════════════════
 def fig_training_curves(m):
     curves = m["training_curves"]
     names  = MODEL_ORDER
@@ -198,9 +174,6 @@ def fig_training_curves(m):
     savefig(fig, "fig3_training_curves")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# FIG 4 — Latency scaling vs sequence length
-# ══════════════════════════════════════════════════════════════════════════════
 def fig_latency_vs_seqlen(m):
     scaling = m["latency_scaling_seq"]
     Ts      = sorted(int(k) for k in scaling)
@@ -229,9 +202,6 @@ def fig_latency_vs_seqlen(m):
     savefig(fig, "fig4_latency_vs_seqlen")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# FIG 5 — Speedup vs sequence length
-# ══════════════════════════════════════════════════════════════════════════════
 def fig_speedup_vs_seqlen(m):
     scaling = m["latency_scaling_seq"]
     Ts      = sorted(int(k) for k in scaling)
@@ -260,9 +230,6 @@ def fig_speedup_vs_seqlen(m):
     savefig(fig, "fig5_speedup_vs_seqlen")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# FIG 6 — Latency distribution (box plot + percentile bars)
-# ══════════════════════════════════════════════════════════════════════════════
 def fig_latency_distribution(m):
     core   = m["core_comparison"]
     names  = MODEL_ORDER
@@ -301,9 +268,6 @@ def fig_latency_distribution(m):
     savefig(fig, "fig6_latency_distribution")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# FIG 7 — Confusion matrices
-# ══════════════════════════════════════════════════════════════════════════════
 def fig_confusion_matrices(m):
     core  = m["core_comparison"]
     names = MODEL_ORDER
@@ -344,9 +308,6 @@ def fig_confusion_matrices(m):
     savefig(fig, "fig7_confusion_matrices")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# MAIN
-# ══════════════════════════════════════════════════════════════════════════════
 def main():
     if not os.path.exists(METRICS):
         raise FileNotFoundError(
